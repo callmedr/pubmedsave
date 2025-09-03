@@ -1,0 +1,5 @@
+{
+  "name": "PubMed Article Finder",
+  "description": "A web application to search for the latest articles on PubMed by topic, displaying titles, abstracts, authors, and publication dates for the 300 most recent results.",
+  "requestFramePermissions": []
+}

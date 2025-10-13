@@ -173,6 +173,49 @@ const App: React.FC = () => {
         setIsAnswering(false);
     }
   }, []);
+
+  const handleTranslateSource = useCallback(async (articleId: string) => {
+    setQaSources(prev =>
+      prev.map(a =>
+        a.id === articleId ? { ...a, isTranslating: true, translationError: undefined } : a
+      )
+    );
+
+    const articleToTranslate = qaSources.find(a => a.id === articleId);
+    if (!articleToTranslate) return;
+
+    try {
+      const { translatedTitle, translatedAbstract } = await translateArticle(
+        articleToTranslate.title,
+        articleToTranslate.abstract
+      );
+
+      setQaSources(prev =>
+        prev.map(a =>
+          a.id === articleId
+            ? { ...a, translatedTitle, translatedAbstract, isTranslating: false }
+            : a
+        )
+      );
+      
+      // Also update the main savedArticles list so the translation persists
+      setSavedArticles(prev =>
+        prev.map(a =>
+          a.id === articleId
+            ? { ...a, translatedTitle, translatedAbstract }
+            : a
+        )
+      );
+
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Translation failed.';
+      setQaSources(prev =>
+        prev.map(a =>
+          a.id === articleId ? { ...a, isTranslating: false, translationError: errorMessage } : a
+        )
+      );
+    }
+}, [qaSources]);
   
   const renderSearchContent = () => {
     if (isLoading) {
@@ -250,7 +293,7 @@ const App: React.FC = () => {
 
             {isAnswering && <Loader />}
             {qaError && <ErrorMessage message={qaError} />}
-            {qaAnswer && <AnswerCard answer={qaAnswer} sources={qaSources} />}
+            {qaAnswer && <AnswerCard answer={qaAnswer} sources={qaSources} onTranslate={handleTranslateSource} />}
         </div>
     );
   };

@@ -23,7 +23,7 @@ const App: React.FC = () => {
   const [articles, setArticles] = useState<Article[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [hasSearched, setHasSearched] = useState<boolean>(false);
-  const [visibleCount, setVisibleCount] = useState<number>(5);
+  const [visibleCount, setVisibleCount] = useState<number>(20);
   const [sortBy, setSortBy] = useState<SortOption>('relevance');
 
   // Saved View State
@@ -36,6 +36,11 @@ const App: React.FC = () => {
   const [qaAnswer, setQaAnswer] = useState<string | null>(null);
   const [qaSources, setQaSources] = useState<Article[]>([]);
   const [qaError, setQaError] = useState<string | null>(null);
+
+  // Batch Save State
+  const [isBatchSaving, setIsBatchSaving] = useState<boolean>(false);
+  const [batchSaveProgress, setBatchSaveProgress] = useState<{ saved: number; total: number }>({ saved: 0, total: 0 });
+  const [batchSaveMessage, setBatchSaveMessage] = useState<string | null>(null);
 
 
   useEffect(() => {
@@ -55,7 +60,8 @@ const App: React.FC = () => {
     setError(null);
     setHasSearched(true);
     setArticles([]);
-    setVisibleCount(5); // Reset for new search
+    setVisibleCount(20); // Reset for new search
+    setBatchSaveMessage(null); // Clear batch save message on new search
 
     try {
       const results = await searchPubMed(query, sortBy);
@@ -128,8 +134,49 @@ const App: React.FC = () => {
     }
   }, []);
 
+  const handleBatchSave = async () => {
+    setIsBatchSaving(true);
+    setBatchSaveMessage(null);
+
+    const visibleArticles = articles.slice(0, visibleCount);
+    const articlesToSave = visibleArticles.filter(a => !savedArticleIds.has(a.id));
+    const skippedCount = visibleArticles.length - articlesToSave.length;
+
+    if (articlesToSave.length === 0) {
+      setBatchSaveMessage(`All ${visibleArticles.length} visible articles are already saved.`);
+      setIsBatchSaving(false);
+      return;
+    }
+
+    let savedCount = 0;
+    let failedCount = 0;
+    setBatchSaveProgress({ saved: 0, total: articlesToSave.length });
+
+    for (const article of articlesToSave) {
+      try {
+        await saveArticle(article);
+        savedCount++;
+        setSavedArticleIds(prev => new Set(prev).add(article.id));
+      } catch (err) {
+        console.error(`Failed to save article ${article.id}:`, err);
+        failedCount++;
+      }
+      setBatchSaveProgress({ saved: savedCount, total: articlesToSave.length });
+    }
+
+    let finalMessage = `${savedCount} article(s) saved successfully.`;
+    if (skippedCount > 0) {
+      finalMessage += ` ${skippedCount} were already saved.`;
+    }
+    if (failedCount > 0) {
+      finalMessage += ` ${failedCount} failed to save.`;
+    }
+    setBatchSaveMessage(finalMessage);
+    setIsBatchSaving(false);
+  };
+
   const handleLoadMore = () => {
-    setVisibleCount(prevCount => prevCount + 5);
+    setVisibleCount(prevCount => prevCount + 20);
   };
 
   const handleViewSaved = async () => {
@@ -242,6 +289,31 @@ const App: React.FC = () => {
     }
     return (
       <>
+        {articles.length > 0 && (
+          <div className="bg-white p-4 rounded-lg shadow-md border border-slate-200 mb-6 text-center">
+            <button
+              onClick={handleBatchSave}
+              disabled={isBatchSaving}
+              className="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded-lg transition-colors duration-200 shadow-md hover:shadow-lg focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 disabled:bg-green-300 disabled:cursor-not-allowed"
+            >
+              {isBatchSaving 
+                ? `Saving... (${batchSaveProgress.saved}/${batchSaveProgress.total})`
+                : 'Save All Visible Articles to DB'}
+            </button>
+            {isBatchSaving && (
+                <div className="w-full bg-gray-200 rounded-full h-2.5 mt-3">
+                    <div 
+                        className="bg-green-500 h-2.5 rounded-full transition-all duration-300" 
+                        style={{ width: `${(batchSaveProgress.saved / batchSaveProgress.total) * 100}%` }}>
+                    </div>
+                </div>
+            )}
+            {batchSaveMessage && (
+              <p className="mt-3 text-sm text-slate-600">{batchSaveMessage}</p>
+            )}
+          </div>
+        )}
+
         <div className="space-y-4">
           {articles.slice(0, visibleCount).map((article) => (
             <ArticleCard 
@@ -250,6 +322,7 @@ const App: React.FC = () => {
               onTranslate={handleTranslate}
               onSave={handleSave}
               isSaved={savedArticleIds.has(article.id)}
+              isBatchSaving={isBatchSaving}
             />
           ))}
         </div>
@@ -258,9 +331,9 @@ const App: React.FC = () => {
             <button
               onClick={handleLoadMore}
               className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-6 rounded-lg transition-colors duration-200 shadow-md hover:shadow-lg focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
-              aria-label="Load 5 more articles"
+              aria-label="Load 20 more articles"
             >
-              Load 5 More
+              Load 20 More
             </button>
           </div>
         )}
